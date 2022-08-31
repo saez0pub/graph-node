@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use graphql_parser::Pos;
+use graphql_parser::{schema::TypeDefinition, Pos};
 use inflector::Inflector;
 use lazy_static::lazy_static;
 
@@ -157,16 +157,7 @@ fn add_order_by_type(
                 description: None,
                 name: type_name,
                 directives: vec![],
-                values: fields
-                    .iter()
-                    .map(|field| &field.name)
-                    .map(|name| EnumValue {
-                        position: Pos::default(),
-                        description: None,
-                        name: name.to_owned(),
-                        directives: vec![],
-                    })
-                    .collect(),
+                values: field_enum_values(schema, fields)?,
             });
             let def = Definition::TypeDefinition(typedef);
             schema.definitions.push(def);
@@ -174,6 +165,77 @@ fn add_order_by_type(
         Some(_) => return Err(APISchemaError::TypeExists(type_name)),
     }
     Ok(())
+}
+
+/// Generates enum values for the given set of fields.
+fn field_enum_values(
+    schema: &Document,
+    fields: &[Field],
+) -> Result<Vec<EnumValue>, APISchemaError> {
+    let mut enum_values = vec![];
+    for field in fields {
+        enum_values.push(EnumValue {
+            position: Pos::default(),
+            description: None,
+            name: field.name.to_owned(),
+            directives: vec![],
+        });
+        enum_values.extend(field_enum_values_from_child_entity(
+            schema,
+            field,
+            &field.field_type,
+        )?);
+    }
+    Ok(enum_values)
+}
+
+fn enum_value_from_child_entity_field(
+    schema: &Document,
+    parent_field: &Field,
+    field: &Field,
+) -> Option<EnumValue> {
+    if ast::is_list_or_non_null_list_field(field) || ast::is_entity_type(schema, &field.field_type)
+    {
+        // Sorting on lists or entities is not supported.
+        None
+    } else {
+        Some(EnumValue {
+            position: Pos::default(),
+            description: None,
+            name: format!("{}__{}", parent_field.name, field.name),
+            directives: vec![],
+        })
+    }
+}
+
+fn field_enum_values_from_child_entity(
+    schema: &Document,
+    field: &Field,
+    field_type: &Type,
+) -> Result<Vec<EnumValue>, APISchemaError> {
+    match field_type {
+        Type::NamedType(ref name) => {
+            let named_type = schema
+                .get_named_type(name)
+                .ok_or_else(|| APISchemaError::TypeNotFound(name.clone()))?;
+            Ok(match named_type {
+                TypeDefinition::Object(ot) => ot
+                    .fields
+                    .iter()
+                    .filter_map(|f| enum_value_from_child_entity_field(schema, field, f))
+                    .collect(),
+                TypeDefinition::Interface(i) => i
+                    .fields
+                    .iter()
+                    .filter_map(|f| enum_value_from_child_entity_field(schema, field, f))
+                    .collect(),
+                _ => vec![],
+            })
+        }
+        // Sort on lists is not supported.
+        Type::ListType(ref _t) => Ok(vec![]),
+        Type::NonNullType(ref t) => field_enum_values_from_child_entity(schema, field, t),
+    }
 }
 
 /// Adds a `<type_name>_filter` enum type for the given fields to the schema.
@@ -850,6 +912,73 @@ mod tests {
             .map(|value| value.name.as_str())
             .collect();
         assert_eq!(values, ["id", "name"]);
+    }
+
+    #[test]
+    fn api_schema_contains_field_order_by_enum_for_child_entity() {
+        let input_schema = parse_schema(
+            r#"
+              enum FurType {
+                  NONE
+                  FLUFFY
+                  BRISTLY
+              }
+
+              type Pet {
+                  id: ID!
+                  name: String!
+                  mostHatedBy: [User!]!
+                  mostLovedBy: [User!]!
+              }
+
+              type User {
+                  id: ID!
+                  name: String!
+                  favoritePetNames: [String!]
+                  pets: [Pet!]!
+                  favoriteFurType: FurType!
+                  favoritePet: Pet!
+                  leastFavoritePet: Pet @derivedFrom(field: "mostHatedBy")
+                  mostFavoritePets: [Pet!] @derivedFrom(field: "mostLovedBy")
+              }
+            "#,
+        )
+        .expect("Failed to parse input schema");
+        let schema = api_schema(&input_schema).expect("Failed to derived API schema");
+
+        let user_order_by = schema
+            .get_named_type("User_orderBy")
+            .expect("User_orderBy type is missing in derived API schema");
+
+        let enum_type = match user_order_by {
+            TypeDefinition::Enum(t) => Some(t),
+            _ => None,
+        }
+        .expect("User_orderBy type is not an enum");
+
+        let values: Vec<&str> = enum_type
+            .values
+            .iter()
+            .map(|value| value.name.as_str())
+            .collect();
+
+        assert_eq!(
+            values,
+            [
+                "id",
+                "name",
+                "favoritePetNames",
+                "pets",
+                "favoriteFurType",
+                "favoritePet",
+                "favoritePet__id",
+                "favoritePet__name",
+                "leastFavoritePet",
+                "leastFavoritePet__id",
+                "leastFavoritePet__name",
+                "mostFavoritePets",
+            ]
+        );
     }
 
     #[test]
