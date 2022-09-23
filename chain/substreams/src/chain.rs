@@ -1,6 +1,7 @@
 use crate::{data_source::*, Block, TriggerData, TriggerFilter, TriggersAdapter};
 use anyhow::Error;
 use core::fmt;
+use graph::blockchain::EmptyRuntimeAdapter;
 use graph::firehose::FirehoseEndpoints;
 use graph::prelude::{BlockHash, LoggerFactory, MetricsRegistry};
 use graph::{
@@ -174,21 +175,12 @@ impl Blockchain for Chain {
             number,
         })
     }
+
     fn runtime_adapter(&self) -> Arc<dyn RuntimeAdapterTrait<Self>> {
-        Arc::new(RuntimeAdapter {})
+        Arc::new(EmptyRuntimeAdapter)
     }
 
     fn is_firehose_supported(&self) -> bool {
         true
-    }
-}
-
-pub struct RuntimeAdapter {}
-impl RuntimeAdapterTrait<crate::Chain> for RuntimeAdapter {
-    fn host_fns(
-        &self,
-        _ds: &<crate::Chain as Blockchain>::DataSource,
-    ) -> Result<Vec<blockchain::HostFn>, Error> {
-        todo!()
     }
 }

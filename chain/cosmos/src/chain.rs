@@ -12,8 +12,8 @@ use graph::{
             FirehoseMapper as FirehoseMapperTrait, TriggersAdapter as TriggersAdapterTrait,
         },
         firehose_block_stream::FirehoseBlockStream,
-        Block as _, BlockHash, BlockPtr, Blockchain, BlockchainKind, IngestorError,
-        RuntimeAdapter as RuntimeAdapterTrait,
+        Block as _, BlockHash, BlockPtr, Blockchain, BlockchainKind, EmptyRuntimeAdapter,
+        IngestorError, RuntimeAdapter as RuntimeAdapterTrait,
     },
     components::store::DeploymentLocator,
     firehose::{self, FirehoseEndpoint, FirehoseEndpoints, ForkStep},
@@ -26,7 +26,6 @@ use crate::data_source::{
     DataSource, DataSourceTemplate, EventOrigin, UnresolvedDataSource, UnresolvedDataSourceTemplate,
 };
 use crate::trigger::CosmosTrigger;
-use crate::RuntimeAdapter;
 use crate::{codec, TriggerFilter};
 
 pub struct Chain {
@@ -166,7 +165,7 @@ impl Blockchain for Chain {
     }
 
     fn runtime_adapter(&self) -> Arc<dyn RuntimeAdapterTrait<Self>> {
-        Arc::new(RuntimeAdapter {})
+        Arc::new(EmptyRuntimeAdapter)
     }
 
     fn is_firehose_supported(&self) -> bool {

@@ -3,6 +3,7 @@
 //! trait which is the centerpiece of this module.
 
 pub mod block_stream;
+mod empty_runtime_adapter;
 pub mod firehose_block_ingestor;
 pub mod firehose_block_stream;
 pub mod mock;
@@ -42,6 +43,7 @@ use std::{
 use web3::types::H256;
 
 pub use block_stream::{ChainHeadUpdateListener, ChainHeadUpdateStream, TriggersAdapter};
+pub use empty_runtime_adapter::EmptyRuntimeAdapter;
 pub use types::{BlockHash, BlockPtr, ChainIdentifier};
 
 use self::block_stream::{BlockStream, FirehoseCursor};
