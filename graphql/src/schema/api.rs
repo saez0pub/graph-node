@@ -1053,15 +1053,7 @@ mod tests {
             .map(|value| value.name.as_str())
             .collect();
 
-            assert_eq!(
-                values,
-                [
-                    "id",
-                    "name",
-                    "mostHatedBy",
-                    "mostLovedBy",
-                ]
-            );
+        assert_eq!(values, ["id", "name", "mostHatedBy", "mostLovedBy",]);
 
         let recipe_order_by = schema
             .get_named_type("Recipe_orderBy")
@@ -1079,21 +1071,21 @@ mod tests {
             .map(|value| value.name.as_str())
             .collect();
 
-            assert_eq!(
-                values,
-                [
-                    "id",
-                    "name",
-                    "author",
-                    "author__id",
-                    "author__name",
-                    "author__favoriteFurType",
-                    "author__favoritePet",
-                    "author__leastFavoritePet",
-                    "lovedBy",
-                    "ingredients"
-                ]
-            );
+        assert_eq!(
+            values,
+            [
+                "id",
+                "name",
+                "author",
+                "author__id",
+                "author__name",
+                "author__favoriteFurType",
+                "author__favoritePet",
+                "author__leastFavoritePet",
+                "lovedBy",
+                "ingredients"
+            ]
+        );
     }
 
     #[test]

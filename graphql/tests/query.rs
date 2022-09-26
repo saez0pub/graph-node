@@ -213,18 +213,21 @@ fn test_schema(id: DeploymentHash, id_type: IdType) -> Schema {
         id: ID!
         title: String!
         song: Song!
+        author: User!
     }
 
     type Photo implements Media @entity {
         id: ID!
         title: String!
         song: Song! @derivedFrom(field: \"media\")
+        author: User!
     }
 
     type Video implements Media @entity {
         id: ID!
         title: String!
         song: Song! @derivedFrom(field: \"media\")
+        author: User!
     }
 
     interface Release {
@@ -261,6 +264,7 @@ fn test_schema(id: DeploymentHash, id_type: IdType) -> Schema {
         latestSongReview: SongReview!
         latestBandReview: BandReview!
         latestReview: Review!
+        medias: [Media!]! @derivedFrom(field: \"author\")
     }
 
     type AnonymousUser implements Author @entity {
@@ -315,12 +319,12 @@ async fn insert_test_entities(
         entity! { __typename: "User",           id: "u1", name: "Baden",        latestSongReview: "r3", latestBandReview: "r1", latestReview: "r1" },
         entity! { __typename: "User",           id: "u2", name: "Goodwill",     latestSongReview: "r4", latestBandReview: "r2", latestReview: "r2" },
         entity! { __typename: "AnonymousUser",  id: "u3", name: "Anonymous 3",  latestSongReview: "r6", latestBandReview: "r5", latestReview: "r5" },
-        entity! { __typename: "Photo", id: md[1],   title: "Cheesy Tune Single Cover" },
-        entity! { __typename: "Video", id: md[2],   title: "Cheesy Tune Music Video" },
-        entity! { __typename: "Photo", id: md[3],   title: "Rock Tune Single Cover" },
-        entity! { __typename: "Video", id: md[4],   title: "Rock Tune Music Video" },
-        entity! { __typename: "Photo", id: md[5],   title: "Pop Tune Single Cover" },
-        entity! { __typename: "Video", id: md[6],   title: "Folk Tune Music Video" },
+        entity! { __typename: "Photo", id: md[1],   title: "Cheesy Tune Single Cover",  author: "u1" },
+        entity! { __typename: "Video", id: md[2],   title: "Cheesy Tune Music Video",   author: "u2" },
+        entity! { __typename: "Photo", id: md[3],   title: "Rock Tune Single Cover",    author: "u1" },
+        entity! { __typename: "Video", id: md[4],   title: "Rock Tune Music Video",     author: "u2" },
+        entity! { __typename: "Photo", id: md[5],   title: "Pop Tune Single Cover",     author: "u1" },
+        entity! { __typename: "Video", id: md[6],   title: "Folk Tune Music Video",     author: "u2" },
         entity! { __typename: "Album", id: "rl1",   title: "Pop and Folk",    songs: vec![s[3], s[4]] },
         entity! { __typename: "Single", id: "rl2",  title: "Rock",           songs: vec![s[2]] },
         entity! { __typename: "Single", id: "rl3",  title: "Cheesy",         songs: vec![s[1]] },
@@ -806,13 +810,51 @@ fn can_query_with_sorting_by_child_interface() {
 }
 
 #[test]
-fn can_query_interface_with_sorting_by_child_entity() {
-    // TODO
+fn can_not_query_interface_with_sorting_by_child_entity() {
+    const QUERY: &str = "
+    query {
+        desc: medias(first: 100, orderBy: author__name, orderDirection: desc) {
+            title
+            author {
+                name
+            }
+        }
+        asc: medias(first: 100, orderBy: author__name, orderDirection: asc) {
+            title
+            author {
+                name
+            }
+        }
+    }";
+
+    run_query(QUERY, |result, _| {
+        // Sorting an interface by child-level entity (derived) is not supported
+        assert!(result.has_errors());
+    });
 }
 
 #[test]
-fn can_query_interface_with_sorting_by_derived_child_entity() {
-    // TODO
+fn can_not_query_interface_with_sorting_by_derived_child_entity() {
+    const QUERY: &str = "
+    query {
+        desc: medias(first: 100, orderBy: song__title, orderDirection: desc) {
+            title
+            song {
+                title
+            }
+        }
+        asc: medias(first: 100, orderBy: song__title, orderDirection: asc) {
+            title
+            song {
+                title
+            }
+        }
+    }";
+
+    run_query(QUERY, |result, _| {
+        // Sorting an interface by child-level entity is not supported
+        assert!(result.has_errors());
+    });
 }
 
 #[test]

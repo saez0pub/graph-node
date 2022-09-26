@@ -451,6 +451,13 @@ fn build_order_by(
                     })
             }
             OrderByValue::Child(parent_field_name, child_field_name) => {
+                if entity.is_interface() {
+                    return Err(QueryExecutionError::OrderByNotSupportedError(
+                        entity.name().to_owned(),
+                        parent_field_name.clone(),
+                    ));
+                }
+
                 let field =
                     sast::get_field(entity, parent_field_name.as_str()).ok_or_else(|| {
                         QueryExecutionError::EntityFieldError(
