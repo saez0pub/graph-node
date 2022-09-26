@@ -931,6 +931,51 @@ mod tests {
                   mostLovedBy: [User!]!
               }
 
+              interface Recipe {
+                id: ID!
+                name: String!
+                author: User!
+                lovedBy: [User!]!
+                ingredients: [String!]!
+              }
+
+              type FoodRecipe implements Recipe {
+                id: ID!
+                name: String!
+                author: User!
+                ingredients: [String!]!
+              }
+
+              type DrinkRecipe implements Recipe {
+                id: ID!
+                name: String!
+                author: User!
+                ingredients: [String!]!
+              }
+
+              interface Meal {
+                id: ID!
+                name: String!
+                mostHatedBy: [User!]!
+                mostLovedBy: [User!]!
+              }
+
+              type Pizza implements Meal {
+                id: ID!
+                name: String!
+                toppings: [String!]!
+                mostHatedBy: [User!]!
+                mostLovedBy: [User!]!
+              }
+
+              type Burger implements Meal {
+                id: ID!
+                name: String!
+                bun: String!
+                mostHatedBy: [User!]!
+                mostLovedBy: [User!]!
+              }
+
               type User {
                   id: ID!
                   name: String!
@@ -940,6 +985,10 @@ mod tests {
                   favoritePet: Pet!
                   leastFavoritePet: Pet @derivedFrom(field: "mostHatedBy")
                   mostFavoritePets: [Pet!] @derivedFrom(field: "mostLovedBy")
+                  favoriteMeal: Meal!
+                  leastFavoriteMeal: Meal @derivedFrom(field: "mostHatedBy")
+                  mostFavoriteMeals: [Meal!] @derivedFrom(field: "mostLovedBy")
+                  recipes: [Recipe!]! @derivedFrom(field: "author")
               }
             "#,
         )
@@ -977,8 +1026,74 @@ mod tests {
                 "leastFavoritePet__id",
                 "leastFavoritePet__name",
                 "mostFavoritePets",
+                "favoriteMeal",
+                "favoriteMeal__id",
+                "favoriteMeal__name",
+                "leastFavoriteMeal",
+                "leastFavoriteMeal__id",
+                "leastFavoriteMeal__name",
+                "mostFavoriteMeals",
+                "recipes",
             ]
         );
+
+        let meal_order_by = schema
+            .get_named_type("Meal_orderBy")
+            .expect("Meal_orderBy type is missing in derived API schema");
+
+        let enum_type = match meal_order_by {
+            TypeDefinition::Enum(t) => Some(t),
+            _ => None,
+        }
+        .expect("Meal_orderBy type is not an enum");
+
+        let values: Vec<&str> = enum_type
+            .values
+            .iter()
+            .map(|value| value.name.as_str())
+            .collect();
+
+            assert_eq!(
+                values,
+                [
+                    "id",
+                    "name",
+                    "mostHatedBy",
+                    "mostLovedBy",
+                ]
+            );
+
+        let recipe_order_by = schema
+            .get_named_type("Recipe_orderBy")
+            .expect("Recipe_orderBy type is missing in derived API schema");
+
+        let enum_type = match recipe_order_by {
+            TypeDefinition::Enum(t) => Some(t),
+            _ => None,
+        }
+        .expect("Recipe_orderBy type is not an enum");
+
+        let values: Vec<&str> = enum_type
+            .values
+            .iter()
+            .map(|value| value.name.as_str())
+            .collect();
+
+            assert_eq!(
+                values,
+                [
+                    "id",
+                    "name",
+                    "author",
+                    "author__id",
+                    "author__name",
+                    "author__favoriteFurType",
+                    "author__favoritePet",
+                    "author__leastFavoritePet",
+                    "lovedBy",
+                    "ingredients"
+                ]
+            );
     }
 
     #[test]
