@@ -219,13 +219,8 @@ fn field_enum_values_from_child_entity(
                 .get_named_type(name)
                 .ok_or_else(|| APISchemaError::TypeNotFound(name.clone()))?;
             Ok(match named_type {
-                TypeDefinition::Object(ot) => ot
-                    .fields
-                    .iter()
-                    .filter_map(|f| enum_value_from_child_entity_field(schema, field, f))
-                    .collect(),
-                TypeDefinition::Interface(i) => i
-                    .fields
+                TypeDefinition::Object(ObjectType { fields, .. })
+                | TypeDefinition::Interface(InterfaceType { fields, .. }) => fields
                     .iter()
                     .filter_map(|f| enum_value_from_child_entity_field(schema, field, f))
                     .collect(),
