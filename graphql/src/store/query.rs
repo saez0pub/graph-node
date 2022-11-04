@@ -401,15 +401,20 @@ enum OrderByValue {
     Child(String, String),
 }
 
-fn parse_order_by(enum_value: &String) -> OrderByValue {
+fn parse_order_by(enum_value: &String) -> Result<OrderByValue, QueryExecutionError> {
     let mut parts = enum_value.split("__");
-    let first = parts.next().expect("some dark magic happened");
+    let first = parts.next().ok_or_else(|| {
+        QueryExecutionError::ValueParseError(
+            "Invalid order value".to_string(),
+            enum_value.to_string(),
+        )
+    })?;
     let second = parts.next();
 
-    match second {
+    Ok(match second {
         Some(second) => OrderByValue::Child(first.to_string(), second.to_string()),
         None => OrderByValue::Direct(first.to_string()),
-    }
+    })
 }
 
 struct ObjectOrderDetails {
@@ -436,7 +441,7 @@ fn build_order_by(
     schema: &ApiSchema,
 ) -> Result<Option<(String, ValueType, Option<OrderByChild>)>, QueryExecutionError> {
     match field.argument_value("orderBy") {
-        Some(r::Value::Enum(name)) => match parse_order_by(name) {
+        Some(r::Value::Enum(name)) => match parse_order_by(name)? {
             OrderByValue::Direct(name) => {
                 let field = sast::get_field(entity, name.as_str()).ok_or_else(|| {
                     QueryExecutionError::EntityFieldError(entity.name().to_owned(), name.clone())
