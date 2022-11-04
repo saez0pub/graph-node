@@ -180,18 +180,14 @@ fn field_enum_values(
             name: field.name.to_owned(),
             directives: vec![],
         });
-        enum_values.extend(field_enum_values_from_child_entity(
-            schema,
-            field,
-            &field.field_type,
-        )?);
+        enum_values.extend(field_enum_values_from_child_entity(schema, field)?);
     }
     Ok(enum_values)
 }
 
 fn enum_value_from_child_entity_field(
     schema: &Document,
-    parent_field: &Field,
+    parent_field_name: &str,
     field: &Field,
 ) -> Option<EnumValue> {
     if ast::is_list_or_non_null_list_field(field) || ast::is_entity_type(schema, &field.field_type)
@@ -202,7 +198,7 @@ fn enum_value_from_child_entity_field(
         Some(EnumValue {
             position: Pos::default(),
             description: None,
-            name: format!("{}__{}", parent_field.name, field.name),
+            name: format!("{}__{}", parent_field_name, field.name),
             directives: vec![],
         })
     }
@@ -211,26 +207,35 @@ fn enum_value_from_child_entity_field(
 fn field_enum_values_from_child_entity(
     schema: &Document,
     field: &Field,
-    field_type: &Type,
 ) -> Result<Vec<EnumValue>, APISchemaError> {
-    match field_type {
-        Type::NamedType(ref name) => {
+    fn resolve_supported_type_name(field_type: &Type) -> Option<&String> {
+        match field_type {
+            Type::NamedType(name) => Some(name),
+            Type::ListType(_) => None,
+            Type::NonNullType(of_type) => resolve_supported_type_name(of_type),
+        }
+    }
+
+    let type_name = resolve_supported_type_name(&field.field_type);
+
+    Ok(match type_name {
+        Some(name) => {
             let named_type = schema
                 .get_named_type(name)
                 .ok_or_else(|| APISchemaError::TypeNotFound(name.clone()))?;
-            Ok(match named_type {
+            match named_type {
                 TypeDefinition::Object(ObjectType { fields, .. })
                 | TypeDefinition::Interface(InterfaceType { fields, .. }) => fields
                     .iter()
-                    .filter_map(|f| enum_value_from_child_entity_field(schema, field, f))
+                    .filter_map(|f| {
+                        enum_value_from_child_entity_field(schema, field.name.as_str(), f)
+                    })
                     .collect(),
                 _ => vec![],
-            })
+            }
         }
-        // Sort on lists is not supported.
-        Type::ListType(ref _t) => Ok(vec![]),
-        Type::NonNullType(ref t) => field_enum_values_from_child_entity(schema, field, t),
-    }
+        None => vec![],
+    })
 }
 
 /// Adds a `<type_name>_filter` enum type for the given fields to the schema.
