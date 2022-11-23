@@ -2539,6 +2539,8 @@ pub struct ChildKeyDetails<'a> {
 pub enum ChildKey<'a> {
     Single(ChildKeyDetails<'a>),
     Many(Vec<ChildKeyDetails<'a>>),
+    IdAsc(ChildKeyDetails<'a>, Option<BlockRangeColumn<'a>>),
+    IdDesc(ChildKeyDetails<'a>, Option<BlockRangeColumn<'a>>),
 }
 
 /// Convenience to pass the name of the column to order by around. If `name`
@@ -2586,24 +2588,56 @@ impl<'a> fmt::Display for SortKey<'a> {
             SortKey::ChildKey(child) => match child {
                 ChildKey::Single(details) => write!(
                     f,
-                    "{}.{} {}, {} {}",
+                    "{}.{} {}, {}.{} {}",
                     details.child_table.name.as_str(),
                     details.sort_by_column.name.as_str(),
                     details.direction,
+                    details.child_table.name.as_str(),
                     PRIMARY_KEY_COLUMN,
                     details.direction
                 ),
                 ChildKey::Many(details) => details.iter().try_for_each(|details| {
                     write!(
                         f,
-                        "{}.{} {}, {} {}",
+                        "{}.{} {}, {}.{} {}",
                         details.child_table.name.as_str(),
                         details.sort_by_column.name.as_str(),
                         details.direction,
+                        details.child_table.name.as_str(),
                         PRIMARY_KEY_COLUMN,
                         details.direction
                     )
                 }),
+                ChildKey::IdAsc(details, Option::None) => write!(
+                    f,
+                    "{}.{}",
+                    details.child_table.name.as_str(),
+                    PRIMARY_KEY_COLUMN
+                ),
+                ChildKey::IdAsc(details, Some(br)) => write!(
+                    f,
+                    "{}.{}, {}.{}",
+                    details.child_table.name.as_str(),
+                    PRIMARY_KEY_COLUMN,
+                    details.child_table.name.as_str(),
+                    br.column_name()
+                ),
+                ChildKey::IdDesc(details, Option::None) => write!(
+                    f,
+                    "{}.{} desc",
+                    details.child_table.name.as_str(),
+                    PRIMARY_KEY_COLUMN
+                ),
+                ChildKey::IdDesc(details, Some(br)) => {
+                    write!(
+                        f,
+                        "{}.{} desc, {}.{} desc",
+                        details.child_table.name.as_str(),
+                        PRIMARY_KEY_COLUMN,
+                        details.child_table.name.as_str(),
+                        br.column_name()
+                    )
+                }
             },
         }
     }
@@ -2662,16 +2696,13 @@ impl<'a> SortKey<'a> {
             join_attribute: String,
             derived: bool,
             attribute: String,
+            br_column: Option<BlockRangeColumn<'a>>,
             direction: &'static str,
         ) -> Result<SortKey<'a>, QueryExecutionError> {
             let sort_by_column = child_table.column_for_field(&attribute)?;
             if sort_by_column.is_fulltext() {
                 Err(QueryExecutionError::NotSupported(
                     "Sorting by fulltext fields".to_string(),
-                ))
-            } else if sort_by_column.is_primary_key() {
-                Err(QueryExecutionError::NotSupported(
-                    "Sorting by id".to_string(),
                 ))
             } else {
                 let (parent_column, child_column) = match derived {
@@ -2698,6 +2729,38 @@ impl<'a> SortKey<'a> {
                         child_table.primary_key(),
                     ),
                 };
+
+                if sort_by_column.is_primary_key() {
+                    return match direction {
+                        ASC => Ok(SortKey::ChildKey(ChildKey::IdAsc(
+                            ChildKeyDetails {
+                                parent_table,
+                                child_table,
+                                parent_join_column: parent_column,
+                                child_join_column: child_column,
+                                /// Sort by this column
+                                sort_by_column,
+                                prefix: "cc".to_string(),
+                                direction,
+                            },
+                            br_column,
+                        ))),
+                        DESC => Ok(SortKey::ChildKey(ChildKey::IdDesc(
+                            ChildKeyDetails {
+                                parent_table,
+                                child_table,
+                                parent_join_column: parent_column,
+                                child_join_column: child_column,
+                                /// Sort by this column
+                                sort_by_column,
+                                prefix: "cc".to_string(),
+                                direction,
+                            },
+                            br_column,
+                        ))),
+                        _ => unreachable!("direction is 'asc' or 'desc'"),
+                    };
+                }
 
                 Ok(SortKey::ChildKey(ChildKey::Single(ChildKeyDetails {
                     parent_table,
@@ -2806,6 +2869,7 @@ impl<'a> SortKey<'a> {
                     child.join_attribute,
                     child.derived,
                     child.attribute,
+                    br_column,
                     ASC,
                 ),
                 EntityOrderChild::Interface(children) => {
@@ -2819,6 +2883,7 @@ impl<'a> SortKey<'a> {
                     child.join_attribute,
                     child.derived,
                     child.attribute,
+                    br_column,
                     DESC,
                 ),
                 EntityOrderChild::Interface(children) => {
@@ -2857,7 +2922,9 @@ impl<'a> SortKey<'a> {
                         if child.sort_by_column.is_primary_key() {
                             return Err(constraint_violation!("SortKey::Key never uses 'id'"));
                         }
-                        out.push_sql(format!(", {}.", child.prefix).as_str());
+                        out.push_sql(", ");
+                        out.push_sql(child.prefix.as_str());
+                        out.push_sql(".");
                         out.push_identifier(child.sort_by_column.name.as_str())?;
                     }
                     ChildKey::Many(children) => {
@@ -2865,8 +2932,18 @@ impl<'a> SortKey<'a> {
                             if child.sort_by_column.is_primary_key() {
                                 return Err(constraint_violation!("SortKey::Key never uses 'id'"));
                             }
-                            out.push_sql(format!(", {}.", child.prefix).as_str());
+                            out.push_sql(", ");
+                            out.push_sql(child.prefix.as_str());
+                            out.push_sql(".");
                             out.push_identifier(child.sort_by_column.name.as_str())?;
+                        }
+                    }
+                    ChildKey::IdAsc(child, br_column) | ChildKey::IdDesc(child, br_column) => {
+                        if let Some(br_column) = br_column {
+                            out.push_sql(", ");
+                            out.push_sql(child.prefix.as_str());
+                            out.push_sql(".");
+                            br_column.name(out);
                         }
                     }
                 }
@@ -2931,6 +3008,32 @@ impl<'a> SortKey<'a> {
                             Some("c"),
                             out,
                         )
+                    }
+                    ChildKey::IdAsc(child, br_column) => {
+                        out.push_sql(child.prefix.as_str());
+                        out.push_sql(".");
+                        out.push_identifier(PRIMARY_KEY_COLUMN)?;
+                        if let Some(br_column) = br_column {
+                            out.push_sql(", ");
+                            out.push_sql(child.prefix.as_str());
+                            out.push_sql(".");
+                            br_column.bare_name(out);
+                        }
+                        Ok(())
+                    }
+                    ChildKey::IdDesc(child, br_column) => {
+                        out.push_sql(child.prefix.as_str());
+                        out.push_sql(".");
+                        out.push_identifier(PRIMARY_KEY_COLUMN)?;
+                        out.push_sql(" desc");
+                        if let Some(br_column) = br_column {
+                            out.push_sql(", ");
+                            out.push_sql(child.prefix.as_str());
+                            out.push_sql(".");
+                            br_column.bare_name(out);
+                            out.push_sql(" desc");
+                        }
+                        Ok(())
                     }
                 }
             }
@@ -3172,6 +3275,26 @@ impl<'a> SortKey<'a> {
                             out,
                         )?;
                     }
+                }
+                ChildKey::IdAsc(child, _) => {
+                    add(
+                        block,
+                        &child.child_table,
+                        &child.child_join_column,
+                        &child.parent_join_column,
+                        &child.prefix,
+                        out,
+                    )?;
+                }
+                ChildKey::IdDesc(child, _) => {
+                    add(
+                        block,
+                        &child.child_table,
+                        &child.child_join_column,
+                        &child.parent_join_column,
+                        &child.prefix,
+                        out,
+                    )?;
                 }
             },
             _ => {}

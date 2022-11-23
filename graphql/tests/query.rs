@@ -785,6 +785,101 @@ fn can_query_with_sorting_by_derived_child_entity() {
 }
 
 #[test]
+fn can_query_with_sorting_by_child_entity_id() {
+    const QUERY: &str = "
+    query {
+        desc: musicians(first: 100, orderBy: mainBand__id, orderDirection: desc) {
+            name
+            mainBand {
+                name
+            }
+        }
+        asc: musicians(first: 100, orderBy: mainBand__id, orderDirection: asc) {
+            name
+            mainBand {
+                name
+            }
+        }
+    }";
+
+    run_query(QUERY, |result, _| {
+        let exp = object! {
+            desc: vec![
+                object! { name: "Valerie", mainBand: r::Value::Null },
+                object! { name: "Tom",  mainBand: object! { name: "The Amateurs"} },
+                object! { name: "John", mainBand: object! { name: "The Musicians" } },
+                object! { name: "Lisa", mainBand: object! { name: "The Musicians" } },
+                ],
+            asc: vec![
+                object! { name: "John", mainBand: object! { name: "The Musicians" } },
+                object! { name: "Lisa", mainBand: object! { name: "The Musicians" } },
+                object! { name: "Tom",  mainBand: object! { name: "The Amateurs"} },
+                object! { name: "Valerie", mainBand: r::Value::Null },
+                ]
+        };
+
+        let data = extract_data!(result).unwrap();
+        assert_eq!(data, exp);
+    })
+}
+
+#[test]
+fn can_query_with_sorting_by_derived_child_entity_id() {
+    const QUERY: &str = "
+    query {
+        desc: songStats(first: 100, orderBy: song__id, orderDirection: desc) {
+            id
+            song {
+              id
+              title
+            }
+            played
+        }
+        asc: songStats(first: 100, orderBy: song__id, orderDirection: asc) {
+            id
+            song {
+              id
+              title
+            }
+            played
+        }
+    }";
+
+    run_query(QUERY, |result, id_type| {
+        let s = id_type.songs();
+        let exp = object! {
+            desc: vec![
+                object! {
+                    id: s[2],
+                    song: object! { id: s[2], title: "Rock Tune" },
+                    played: 15
+                },
+                object! {
+                    id: s[1],
+                    song: object! { id: s[1], title: "Cheesy Tune" },
+                    played: 10,
+                }
+            ],
+            asc: vec![
+                object! {
+                    id: s[1],
+                    song: object! { id: s[1], title: "Cheesy Tune" },
+                    played: 10,
+                },
+                object! {
+                    id: s[2],
+                    song: object! { id: s[2], title: "Rock Tune" },
+                    played: 15
+                }
+            ]
+        };
+
+        let data = extract_data!(result).unwrap();
+        assert_eq!(data, exp);
+    })
+}
+
+#[test]
 fn can_query_with_sorting_by_child_interface() {
     const QUERY: &str = "
     query {
