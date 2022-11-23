@@ -2677,14 +2677,24 @@ impl<'a> SortKey<'a> {
                 let (parent_column, child_column) = match derived {
                     true => (
                         parent_table.primary_key(),
-                        child_table
-                            .column_for_field(&join_attribute)
-                            .expect("Column for a join attribute not found"),
+                        child_table.column_for_field(&join_attribute).map_err(|_| {
+                            graph::constraint_violation!(
+                                "Column for a join attribute `{}` of `{}` table not found",
+                                join_attribute,
+                                child_table.name.as_str()
+                            )
+                        })?,
                     ),
                     false => (
                         parent_table
                             .column_for_field(&join_attribute)
-                            .expect("Column for a join attribute not found"),
+                            .map_err(|_| {
+                                graph::constraint_violation!(
+                                    "Column for a join attribute `{}` of `{}` table not found",
+                                    join_attribute,
+                                    parent_table.name.as_str()
+                                )
+                            })?,
                         child_table.primary_key(),
                     ),
                 };
@@ -2731,12 +2741,24 @@ impl<'a> SortKey<'a> {
                                     parent_table.primary_key(),
                                     child_table
                                         .column_for_field(&children.join_attribute)
-                                        .expect("Column for a join attribute not found"),
+                                        .map_err(|_| {
+                                            graph::constraint_violation!(
+                                                "Column for a join attribute `{}` of `{}` table not found",
+                                                children.join_attribute,
+                                                child_table.name.as_str()
+                                            )
+                                        })?,
                                 ),
                                 false => (
                                     parent_table
                                         .column_for_field(&children.join_attribute)
-                                        .expect("Column for a join attribute not found"),
+                                        .map_err(|_| {
+                                            graph::constraint_violation!(
+                                                "Column for a join attribute `{}` of `{}` table not found",
+                                                children.join_attribute,
+                                                parent_table.name.as_str()
+                                            )
+                                        })?,
                                     child_table.primary_key(),
                                 ),
                             };
