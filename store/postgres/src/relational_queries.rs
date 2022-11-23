@@ -3078,14 +3078,11 @@ impl<'a> SortKey<'a> {
         ) -> QueryResult<()> {
             out.push_sql(" left join ");
             out.push_sql(child_table.qualified_name.as_str());
-            out.push_sql(format!(" as {prefix} on (").as_str());
+            out.push_sql(" as ");
+            out.push_sql(prefix);
+            out.push_sql(" on (");
 
             if child_column.is_list() {
-                println!(
-                    "Type C c.{} = any(cc.{})",
-                    parent_column.name.as_str(),
-                    child_column.name.as_str()
-                );
                 // Type C: p.id = any(c.child_ids)
                 out.push_sql("c.");
                 out.push_identifier(parent_column.name.as_str())?;
@@ -3095,11 +3092,6 @@ impl<'a> SortKey<'a> {
                 out.push_identifier(child_column.name.as_str())?;
                 out.push_sql(")");
             } else if parent_column.is_list() {
-                println!(
-                    "Type A cc.{} = any(c.{})",
-                    child_column.name.as_str(),
-                    parent_column.name.as_str()
-                );
                 // Type A: c.id = any(p.{parent_field})
                 out.push_sql(prefix);
                 out.push_sql(".");
@@ -3108,11 +3100,6 @@ impl<'a> SortKey<'a> {
                 out.push_identifier(parent_column.name.as_str())?;
                 out.push_sql(")");
             } else {
-                println!(
-                    "Type B cc.{} = c.{}",
-                    child_column.name.as_str(),
-                    parent_column.name.as_str()
-                );
                 // Type B: c.id = p.{parent_field}
                 out.push_sql(prefix);
                 out.push_sql(".");
@@ -3122,7 +3109,9 @@ impl<'a> SortKey<'a> {
                 out.push_identifier(parent_column.name.as_str())?;
             }
 
-            out.push_sql(format!(" and {prefix}.").as_str());
+            out.push_sql(" and ");
+            out.push_sql(prefix);
+            out.push_sql(".");
             out.push_identifier(BLOCK_RANGE_COLUMN)?;
             out.push_sql(" @> ");
             out.push_bind_param::<Integer, _>(&block)?;
@@ -3304,7 +3293,7 @@ impl<'a> FilterQuery<'a> {
     ) -> QueryResult<()> {
         Self::select_entity_and_data(table, &mut out);
         out.push_sql(" from (select ");
-        write_column_names(column_names, table, Some("c"), &mut out)?;
+        write_column_names(column_names, table, Some("c."), &mut out)?;
         self.filtered_rows(table, filter, out.reborrow())?;
         out.push_sql("\n ");
         self.sort_key.order_by(&mut out)?;
@@ -3938,16 +3927,18 @@ fn write_column_names(
     prefix: Option<&str>,
     out: &mut AstPass<Pg>,
 ) -> QueryResult<()> {
-    let prefix = prefix
-        .map(|p| format!("{}.", p).clone())
-        .unwrap_or("".to_string());
+    let prefix = prefix.unwrap_or("");
 
     match column_names {
-        AttributeNames::All => out.push_sql(format!(" {}* ", prefix).as_str()),
+        AttributeNames::All => {
+            out.push_sql(" ");
+            out.push_sql(prefix);
+            out.push_sql("*");
+        }
         AttributeNames::Select(column_names) => {
             let mut iterator = iter_column_names(column_names, table, true).peekable();
             while let Some(column_name) = iterator.next() {
-                out.push_sql(prefix.as_str());
+                out.push_sql(prefix);
                 out.push_identifier(column_name)?;
                 if iterator.peek().is_some() {
                     out.push_sql(", ");
