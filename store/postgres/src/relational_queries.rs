@@ -2536,11 +2536,25 @@ pub struct ChildKeyDetails<'a> {
 }
 
 #[derive(Debug, Clone)]
+pub struct ChildIdDetails<'a> {
+    /// Table representing the parent entity
+    pub parent_table: &'a Table,
+    /// Column in the parent table that stores the connection between the parent and the child
+    pub parent_join_column: &'a Column,
+    /// Table representing the child entity
+    pub child_table: &'a Table,
+    /// Column in the child table that stores the connection between the child and the parent
+    pub child_join_column: &'a Column,
+    /// Prefix for the child table
+    pub prefix: String,
+}
+
+#[derive(Debug, Clone)]
 pub enum ChildKey<'a> {
     Single(ChildKeyDetails<'a>),
     Many(Vec<ChildKeyDetails<'a>>),
-    IdAsc(ChildKeyDetails<'a>, Option<BlockRangeColumn<'a>>),
-    IdDesc(ChildKeyDetails<'a>, Option<BlockRangeColumn<'a>>),
+    IdAsc(ChildIdDetails<'a>, Option<BlockRangeColumn<'a>>),
+    IdDesc(ChildIdDetails<'a>, Option<BlockRangeColumn<'a>>),
 }
 
 /// Convenience to pass the name of the column to order by around. If `name`
@@ -2733,28 +2747,22 @@ impl<'a> SortKey<'a> {
                 if sort_by_column.is_primary_key() {
                     return match direction {
                         ASC => Ok(SortKey::ChildKey(ChildKey::IdAsc(
-                            ChildKeyDetails {
+                            ChildIdDetails {
                                 parent_table,
                                 child_table,
                                 parent_join_column: parent_column,
                                 child_join_column: child_column,
-                                /// Sort by this column
-                                sort_by_column,
                                 prefix: "cc".to_string(),
-                                direction,
                             },
                             br_column,
                         ))),
                         DESC => Ok(SortKey::ChildKey(ChildKey::IdDesc(
-                            ChildKeyDetails {
+                            ChildIdDetails {
                                 parent_table,
                                 child_table,
                                 parent_join_column: parent_column,
                                 child_join_column: child_column,
-                                /// Sort by this column
-                                sort_by_column,
                                 prefix: "cc".to_string(),
-                                direction,
                             },
                             br_column,
                         ))),
@@ -3276,17 +3284,7 @@ impl<'a> SortKey<'a> {
                         )?;
                     }
                 }
-                ChildKey::IdAsc(child, _) => {
-                    add(
-                        block,
-                        &child.child_table,
-                        &child.child_join_column,
-                        &child.parent_join_column,
-                        &child.prefix,
-                        out,
-                    )?;
-                }
-                ChildKey::IdDesc(child, _) => {
+                ChildKey::IdAsc(child, _) | ChildKey::IdDesc(child, _) => {
                     add(
                         block,
                         &child.child_table,
