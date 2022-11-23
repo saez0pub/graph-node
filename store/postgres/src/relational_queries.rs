@@ -2519,12 +2519,19 @@ impl<'a> FilterCollection<'a> {
 
 #[derive(Debug, Clone)]
 pub struct ChildKeyDetails<'a> {
+    /// Table representing the parent entity
     pub parent_table: &'a Table,
-    pub parent_column: &'a Column,
+    /// Column in the parent table that stores the connection between the parent and the child
+    pub parent_join_column: &'a Column,
+    /// Table representing the child entity
     pub child_table: &'a Table,
-    pub child_column: &'a Column,
-    pub column: &'a Column,
+    /// Column in the child table that stores the connection between the child and the parent
+    pub child_join_column: &'a Column,
+    /// Column of the child table that sorting is done on
+    pub sort_by_column: &'a Column,
+    /// Prefix for the child table
     pub prefix: String,
+    /// Either `asc` or `desc`
     pub direction: &'static str,
 }
 
@@ -2581,7 +2588,7 @@ impl<'a> fmt::Display for SortKey<'a> {
                     f,
                     "{}.{} {}, {} {}",
                     details.child_table.name.as_str(),
-                    details.column.name.as_str(),
+                    details.sort_by_column.name.as_str(),
                     details.direction,
                     PRIMARY_KEY_COLUMN,
                     details.direction
@@ -2591,7 +2598,7 @@ impl<'a> fmt::Display for SortKey<'a> {
                         f,
                         "{}.{} {}, {} {}",
                         details.child_table.name.as_str(),
-                        details.column.name.as_str(),
+                        details.sort_by_column.name.as_str(),
                         details.direction,
                         PRIMARY_KEY_COLUMN,
                         details.direction
@@ -2685,10 +2692,10 @@ impl<'a> SortKey<'a> {
                 Ok(SortKey::ChildKey(ChildKey::Single(ChildKeyDetails {
                     parent_table,
                     child_table,
-                    parent_column,
-                    child_column,
+                    parent_join_column: parent_column,
+                    child_join_column: child_column,
                     /// Sort by this column
-                    column: sort_by_column,
+                    sort_by_column,
                     prefix: "cc".to_string(),
                     direction,
                 })))
@@ -2738,10 +2745,10 @@ impl<'a> SortKey<'a> {
 
                             Ok(ChildKeyDetails {
                                 parent_table,
-                                parent_column,
+                                parent_join_column: parent_column,
                                 child_table,
-                                child_column,
-                                column: sort_by_column,
+                                child_join_column: child_column,
+                                sort_by_column,
                                 prefix: format!("cc{}", i),
                                 direction,
                             })
@@ -2825,19 +2832,19 @@ impl<'a> SortKey<'a> {
             SortKey::ChildKey(nested) => {
                 match nested {
                     ChildKey::Single(child) => {
-                        if child.column.is_primary_key() {
+                        if child.sort_by_column.is_primary_key() {
                             return Err(constraint_violation!("SortKey::Key never uses 'id'"));
                         }
                         out.push_sql(format!(", {}.", child.prefix).as_str());
-                        out.push_identifier(child.column.name.as_str())?;
+                        out.push_identifier(child.sort_by_column.name.as_str())?;
                     }
                     ChildKey::Many(children) => {
                         for child in children.iter() {
-                            if child.column.is_primary_key() {
+                            if child.sort_by_column.is_primary_key() {
                                 return Err(constraint_violation!("SortKey::Key never uses 'id'"));
                             }
                             out.push_sql(format!(", {}.", child.prefix).as_str());
-                            out.push_identifier(child.column.name.as_str())?;
+                            out.push_identifier(child.sort_by_column.name.as_str())?;
                         }
                     }
                 }
@@ -2884,7 +2891,7 @@ impl<'a> SortKey<'a> {
                 out.push_sql("order by ");
                 match child {
                     ChildKey::Single(child) => SortKey::sort_expr(
-                        child.column,
+                        child.sort_by_column,
                         &None,
                         child.direction,
                         Some(&child.prefix),
@@ -2894,7 +2901,7 @@ impl<'a> SortKey<'a> {
                     ChildKey::Many(children) => {
                         let columns: Vec<(&Column, &str)> = children
                             .iter()
-                            .map(|child| (child.column, child.prefix.as_str()))
+                            .map(|child| (child.sort_by_column, child.prefix.as_str()))
                             .collect();
                         SortKey::multi_sort_expr(
                             columns,
@@ -3126,8 +3133,8 @@ impl<'a> SortKey<'a> {
                     add(
                         block,
                         &child.child_table,
-                        &child.child_column,
-                        &child.parent_column,
+                        &child.child_join_column,
+                        &child.parent_join_column,
                         &child.prefix,
                         out,
                     )?;
@@ -3137,8 +3144,8 @@ impl<'a> SortKey<'a> {
                         add(
                             block,
                             &child.child_table,
-                            &child.child_column,
-                            &child.parent_column,
+                            &child.child_join_column,
+                            &child.parent_join_column,
                             &child.prefix,
                             out,
                         )?;
