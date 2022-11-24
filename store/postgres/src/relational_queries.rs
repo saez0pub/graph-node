@@ -16,8 +16,8 @@ use graph::components::store::EntityKey;
 use graph::data::value::Word;
 use graph::prelude::{
     anyhow, r, serde_json, Attribute, BlockNumber, ChildMultiplicity, Entity, EntityCollection,
-    EntityFilter, EntityLink, EntityOrder, EntityOrderByChildInterface, EntityOrderChild,
-    EntityRange, EntityWindow, ParentLink, QueryExecutionError, StoreError, Value, ENV_VARS,
+    EntityFilter, EntityLink, EntityOrder, EntityOrderByChild, EntityOrderByChildInfo, EntityRange,
+    EntityWindow, ParentLink, QueryExecutionError, StoreError, Value, ENV_VARS,
 };
 use graph::{
     components::store::{AttributeNames, EntityType},
@@ -2784,7 +2784,8 @@ impl<'a> SortKey<'a> {
         }
 
         fn with_child_interface_key<'a>(
-            children: EntityOrderByChildInterface,
+            child: EntityOrderByChildInfo,
+            entity_types: Vec<EntityType>,
             direction: &'static str,
             parent_table: &'a Table,
             layout: &'a Layout,
@@ -2792,12 +2793,11 @@ impl<'a> SortKey<'a> {
             let mut i = 0;
 
             Ok(SortKey::ChildKey(ChildKey::Many(
-                children
-                    .entity_types
+                entity_types
                     .iter()
                     .map(|entity_type| {
                         let child_table = layout.table_for_entity(entity_type)?;
-                        let sort_by_column = child_table.column_for_field(&children.attribute)?;
+                        let sort_by_column = child_table.column_for_field(&child.sort_by_attribute)?;
                         if sort_by_column.is_fulltext() {
                             Err(QueryExecutionError::NotSupported(
                                 "Sorting by fulltext fields".to_string(),
@@ -2807,26 +2807,26 @@ impl<'a> SortKey<'a> {
                                 "Sorting by id".to_string(),
                             ))
                         } else {
-                            let (parent_column, child_column) = match children.derived {
+                            let (parent_column, child_column) = match child.derived {
                                 true => (
                                     parent_table.primary_key(),
                                     child_table
-                                        .column_for_field(&children.join_attribute)
+                                        .column_for_field(&child.join_attribute)
                                         .map_err(|_| {
                                             graph::constraint_violation!(
                                                 "Column for a join attribute `{}` of `{}` table not found",
-                                                children.join_attribute,
+                                                child.join_attribute,
                                                 child_table.name.as_str()
                                             )
                                         })?,
                                 ),
                                 false => (
                                     parent_table
-                                        .column_for_field(&children.join_attribute)
+                                        .column_for_field(&child.join_attribute)
                                         .map_err(|_| {
                                             graph::constraint_violation!(
                                                 "Column for a join attribute `{}` of `{}` table not found",
-                                                children.join_attribute,
+                                                child.join_attribute,
                                                 parent_table.name.as_str()
                                             )
                                         })?,
@@ -2871,31 +2871,31 @@ impl<'a> SortKey<'a> {
             EntityOrder::Default => Ok(SortKey::IdAsc(br_column)),
             EntityOrder::Unordered => Ok(SortKey::None),
             EntityOrder::ChildAscending(kind) => match kind {
-                EntityOrderChild::Object(child) => with_child_object_key(
+                EntityOrderByChild::Object(child, entity_type) => with_child_object_key(
                     table,
-                    layout.table_for_entity(&child.entity_type)?,
+                    layout.table_for_entity(&entity_type)?,
                     child.join_attribute,
                     child.derived,
-                    child.attribute,
+                    child.sort_by_attribute,
                     br_column,
                     ASC,
                 ),
-                EntityOrderChild::Interface(children) => {
-                    with_child_interface_key(children, ASC, table, layout)
+                EntityOrderByChild::Interface(child, entity_types) => {
+                    with_child_interface_key(child, entity_types, ASC, table, layout)
                 }
             },
             EntityOrder::ChildDescending(kind) => match kind {
-                EntityOrderChild::Object(child) => with_child_object_key(
+                EntityOrderByChild::Object(child, entity_type) => with_child_object_key(
                     table,
-                    layout.table_for_entity(&child.entity_type)?,
+                    layout.table_for_entity(&entity_type)?,
                     child.join_attribute,
                     child.derived,
-                    child.attribute,
+                    child.sort_by_attribute,
                     br_column,
                     DESC,
                 ),
-                EntityOrderChild::Interface(children) => {
-                    with_child_interface_key(children, DESC, table, layout)
+                EntityOrderByChild::Interface(child, entity_types) => {
+                    with_child_interface_key(child, entity_types, DESC, table, layout)
                 }
             },
         }

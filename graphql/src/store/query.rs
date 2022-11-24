@@ -63,40 +63,46 @@ pub(crate) fn build_query<'a>(
             EntityOrder::Descending(attr, value_type)
         }
         (Some((attr, _, Some(child))), OrderDirection::Ascending) => match child {
-            OrderByChild::Object(child) => {
-                EntityOrder::ChildAscending(EntityOrderChild::Object(EntityOrderByChildObject {
-                    entity_type: child.entity_type,
-                    attribute: attr,
+            OrderByChild::Object(child) => EntityOrder::ChildAscending(EntityOrderByChild::Object(
+                EntityOrderByChildInfo {
+                    sort_by_attribute: attr,
                     join_attribute: child.join_attribute,
                     derived: child.derived,
-                }))
+                },
+                child.entity_type,
+            )),
+            OrderByChild::Interface(child) => {
+                EntityOrder::ChildAscending(EntityOrderByChild::Interface(
+                    EntityOrderByChildInfo {
+                        sort_by_attribute: attr,
+                        join_attribute: child.join_attribute,
+                        derived: child.derived,
+                    },
+                    child.entity_types,
+                ))
             }
-            OrderByChild::Interface(child) => EntityOrder::ChildAscending(
-                EntityOrderChild::Interface(EntityOrderByChildInterface {
-                    entity_types: child.entity_types,
-                    attribute: attr,
-                    join_attribute: child.join_attribute,
-                    derived: child.derived,
-                }),
-            ),
         },
         (Some((attr, _, Some(child))), OrderDirection::Descending) => match child {
             OrderByChild::Object(child) => {
-                EntityOrder::ChildDescending(EntityOrderChild::Object(EntityOrderByChildObject {
-                    entity_type: child.entity_type,
-                    attribute: attr,
-                    join_attribute: child.join_attribute,
-                    derived: child.derived,
-                }))
+                EntityOrder::ChildDescending(EntityOrderByChild::Object(
+                    EntityOrderByChildInfo {
+                        sort_by_attribute: attr,
+                        join_attribute: child.join_attribute,
+                        derived: child.derived,
+                    },
+                    child.entity_type,
+                ))
             }
-            OrderByChild::Interface(child) => EntityOrder::ChildDescending(
-                EntityOrderChild::Interface(EntityOrderByChildInterface {
-                    entity_types: child.entity_types,
-                    attribute: attr,
-                    join_attribute: child.join_attribute,
-                    derived: child.derived,
-                }),
-            ),
+            OrderByChild::Interface(child) => {
+                EntityOrder::ChildDescending(EntityOrderByChild::Interface(
+                    EntityOrderByChildInfo {
+                        sort_by_attribute: attr,
+                        join_attribute: child.join_attribute,
+                        derived: child.derived,
+                    },
+                    child.entity_types,
+                ))
+            }
         },
         (None, _) => EntityOrder::Default,
     };

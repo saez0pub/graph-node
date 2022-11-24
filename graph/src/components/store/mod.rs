@@ -246,26 +246,22 @@ impl EntityFilter {
     }
 }
 
+/// Holds the information needed to query a store.
 #[derive(Clone, Debug, PartialEq)]
-pub struct EntityOrderByChildObject {
-    pub entity_type: EntityType,
-    pub attribute: Attribute,
+pub struct EntityOrderByChildInfo {
+    /// The attribute of the child entity that is used to order the results.
+    pub sort_by_attribute: Attribute,
+    /// The attribute that is used to join to the parent and child entity.
     pub join_attribute: Attribute,
+    /// If true, the child entity is derived from the parent entity.
     pub derived: bool,
 }
 
+/// Holds the information needed to order the results of a query based on nested entities.
 #[derive(Clone, Debug, PartialEq)]
-pub struct EntityOrderByChildInterface {
-    pub entity_types: Vec<EntityType>,
-    pub attribute: Attribute,
-    pub join_attribute: Attribute,
-    pub derived: bool,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum EntityOrderChild {
-    Object(EntityOrderByChildObject),
-    Interface(EntityOrderByChildInterface),
+pub enum EntityOrderByChild {
+    Object(EntityOrderByChildInfo, EntityType),
+    Interface(EntityOrderByChildInfo, Vec<EntityType>),
 }
 
 /// The order in which entities should be restored from a store.
@@ -276,9 +272,9 @@ pub enum EntityOrder {
     /// Order descending by the given attribute. Use `id` as a tie-breaker
     Descending(String, ValueType),
     /// Order ascending by the given attribute of a child entity. Use `id` as a tie-breaker
-    ChildAscending(EntityOrderChild),
+    ChildAscending(EntityOrderByChild),
     /// Order descending by the given attribute of a child entity. Use `id` as a tie-breaker
-    ChildDescending(EntityOrderChild),
+    ChildDescending(EntityOrderByChild),
     /// Order by the `id` of the entities
     Default,
     /// Do not order at all. This speeds up queries where we know that
