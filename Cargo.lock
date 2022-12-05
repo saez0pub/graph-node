@@ -1732,6 +1732,7 @@ dependencies = [
  "Inflector",
  "anyhow",
  "async-recursion",
+ "base64",
  "crossbeam",
  "defer",
  "graph",
