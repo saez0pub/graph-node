@@ -17,12 +17,12 @@ use slog::{o, Discard, Logger};
 
 #[tokio::test]
 async fn data_source_revert() -> anyhow::Result<()> {
-    let stores = stores("./integration-tests/config.simple.toml").await;
+    let stores = stores("./runner-tests/config.simple.toml").await;
 
     let subgraph_name = SubgraphName::new("data-source-revert").unwrap();
     let hash = {
-        let test_dir = format!("./integration-tests/{}", subgraph_name);
-        fixture::build_subgraph(&test_dir).await
+        let test_dir = format!("./runner-tests/{}", subgraph_name);
+        fixture::build_subgraph(&test_dir, "./runner-tests").await
     };
 
     let blocks = {
@@ -61,8 +61,9 @@ async fn data_source_revert() -> anyhow::Result<()> {
     // Test grafted version
     let subgraph_name = SubgraphName::new("data-source-revert-grafted").unwrap();
     let hash = fixture::build_subgraph_with_yarn_cmd(
-        "./integration-tests/data-source-revert",
+        "./runner-tests/data-source-revert",
         "deploy:test-grafted",
+        "./runner-tests",
     )
     .await;
     let graft_block = Some(test_ptr(3));
@@ -99,8 +100,8 @@ async fn typename() -> anyhow::Result<()> {
     let subgraph_name = SubgraphName::new("typename").unwrap();
 
     let hash = {
-        let test_dir = format!("./integration-tests/{}", subgraph_name);
-        fixture::build_subgraph(&test_dir).await
+        let test_dir = format!("./runner-tests/{}", subgraph_name);
+        fixture::build_subgraph(&test_dir, "./runner-tests").await
     };
 
     let blocks = {
@@ -118,7 +119,7 @@ async fn typename() -> anyhow::Result<()> {
 
     let stop_block = blocks.last().unwrap().block.ptr();
 
-    let stores = stores("./integration-tests/config.simple.toml").await;
+    let stores = stores("./runner-tests/config.simple.toml").await;
     let chain = Arc::new(chain(blocks, &stores, None).await);
     let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, chain, None, None).await;
 
@@ -129,12 +130,12 @@ async fn typename() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn file_data_sources() {
-    let stores = stores("./integration-tests/config.simple.toml").await;
+    let stores = stores("./runner-tests/config.simple.toml").await;
 
     let subgraph_name = SubgraphName::new("file-data-sources").unwrap();
     let hash = {
-        let test_dir = format!("./integration-tests/{}", subgraph_name);
-        fixture::build_subgraph(&test_dir).await
+        let test_dir = format!("./runner-tests/{}", subgraph_name);
+        fixture::build_subgraph(&test_dir, "./runner-tests").await
     };
 
     let blocks = {
@@ -239,12 +240,12 @@ async fn file_data_sources() {
 
 #[tokio::test]
 async fn template_static_filters_false_positives() {
-    let stores = stores("./integration-tests/config.simple.toml").await;
+    let stores = stores("./runner-tests/config.simple.toml").await;
 
     let subgraph_name = SubgraphName::new("dynamic-data-source").unwrap();
     let hash = {
-        let test_dir = format!("./integration-tests/{}", subgraph_name);
-        fixture::build_subgraph(&test_dir).await
+        let test_dir = format!("./runner-tests/{}", subgraph_name);
+        fixture::build_subgraph(&test_dir, "./runner-tests").await
     };
 
     let blocks = {
@@ -292,11 +293,11 @@ async fn template_static_filters_false_positives() {
 
 #[tokio::test]
 async fn retry_create_ds() {
-    let stores = stores("./integration-tests/config.simple.toml").await;
+    let stores = stores("./runner-tests/config.simple.toml").await;
     let subgraph_name = SubgraphName::new("data-source-revert2").unwrap();
     let hash = {
-        let test_dir = format!("./integration-tests/{}", subgraph_name);
-        fixture::build_subgraph(&test_dir).await
+        let test_dir = format!("./runner-tests/{}", subgraph_name);
+        fixture::build_subgraph(&test_dir, "./runner-tests").await
     };
 
     let blocks = {
@@ -358,8 +359,8 @@ async fn fatal_error() -> anyhow::Result<()> {
     let subgraph_name = SubgraphName::new("fatal-error").unwrap();
 
     let hash = {
-        let test_dir = format!("./integration-tests/{}", subgraph_name);
-        fixture::build_subgraph(&test_dir).await
+        let test_dir = format!("./runner-tests/{}", subgraph_name);
+        fixture::build_subgraph(&test_dir, "./runner-tests").await
     };
 
     let blocks = {
@@ -372,7 +373,7 @@ async fn fatal_error() -> anyhow::Result<()> {
 
     let stop_block = blocks.last().unwrap().block.ptr();
 
-    let stores = stores("./integration-tests/config.simple.toml").await;
+    let stores = stores("./runner-tests/config.simple.toml").await;
     let chain = Arc::new(chain(blocks, &stores, None).await);
     let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, chain, None, None).await;
 
