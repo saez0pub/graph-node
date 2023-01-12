@@ -2536,6 +2536,24 @@ pub struct ChildKeyDetails<'a> {
 }
 
 #[derive(Debug, Clone)]
+pub struct ChildKeyAndIdSharedDetails<'a> {
+    /// Table representing the parent entity
+    pub parent_table: &'a Table,
+    /// Column in the parent table that stores the connection between the parent and the child
+    pub parent_join_column: &'a Column,
+    /// Table representing the child entity
+    pub child_table: &'a Table,
+    /// Column in the child table that stores the connection between the child and the parent
+    pub child_join_column: &'a Column,
+    /// Column of the child table that sorting is done on
+    pub sort_by_column: &'a Column,
+    /// Prefix for the child table
+    pub prefix: String,
+    /// Either `asc` or `desc`
+    pub direction: &'static str,
+}
+
+#[derive(Debug, Clone)]
 pub struct ChildIdDetails<'a> {
     /// Table representing the parent entity
     pub parent_table: &'a Table,
@@ -2555,6 +2573,8 @@ pub enum ChildKey<'a> {
     Many(Vec<ChildKeyDetails<'a>>),
     IdAsc(ChildIdDetails<'a>, Option<BlockRangeColumn<'a>>),
     IdDesc(ChildIdDetails<'a>, Option<BlockRangeColumn<'a>>),
+    ManyIdAsc(Vec<ChildIdDetails<'a>>, Option<BlockRangeColumn<'a>>),
+    ManyIdDesc(Vec<ChildIdDetails<'a>>, Option<BlockRangeColumn<'a>>),
 }
 
 /// Convenience to pass the name of the column to order by around. If `name`
@@ -2622,6 +2642,48 @@ impl<'a> fmt::Display for SortKey<'a> {
                         details.direction
                     )
                 }),
+
+                ChildKey::ManyIdAsc(details, Option::None) => {
+                    details.iter().try_for_each(|details| {
+                        write!(
+                            f,
+                            "{}.{}",
+                            details.child_table.name.as_str(),
+                            PRIMARY_KEY_COLUMN
+                        )
+                    })
+                }
+                ChildKey::ManyIdAsc(details, Some(br)) => details.iter().try_for_each(|details| {
+                    write!(
+                        f,
+                        "{}.{}, {}.{}",
+                        details.child_table.name.as_str(),
+                        PRIMARY_KEY_COLUMN,
+                        details.child_table.name.as_str(),
+                        br.column_name()
+                    )
+                }),
+                ChildKey::ManyIdDesc(details, Option::None) => {
+                    details.iter().try_for_each(|details| {
+                        write!(
+                            f,
+                            "{}.{} desc",
+                            details.child_table.name.as_str(),
+                            PRIMARY_KEY_COLUMN
+                        )
+                    })
+                }
+                ChildKey::ManyIdDesc(details, Some(br)) => details.iter().try_for_each(|details| {
+                    write!(
+                        f,
+                        "{}.{} desc, {}.{} desc",
+                        details.child_table.name.as_str(),
+                        PRIMARY_KEY_COLUMN,
+                        details.child_table.name.as_str(),
+                        br.column_name()
+                    )
+                }),
+
                 ChildKey::IdAsc(details, Option::None) => write!(
                     f,
                     "{}.{}",
@@ -2657,6 +2719,9 @@ impl<'a> fmt::Display for SortKey<'a> {
     }
 }
 
+const ASC: &str = "asc";
+const DESC: &str = "desc";
+
 impl<'a> SortKey<'a> {
     fn new(
         order: EntityOrder,
@@ -2665,9 +2730,6 @@ impl<'a> SortKey<'a> {
         block: BlockNumber,
         layout: &'a Layout,
     ) -> Result<Self, QueryExecutionError> {
-        const ASC: &str = "asc";
-        const DESC: &str = "desc";
-
         fn with_key<'a>(
             table: &'a Table,
             attribute: String,
@@ -2783,72 +2845,142 @@ impl<'a> SortKey<'a> {
             }
         }
 
+        fn build_children_vec<'a>(
+            layout: &'a Layout,
+            parent_table: &'a Table,
+            entity_types: Vec<EntityType>,
+            child: EntityOrderByChildInfo,
+            direction: &'static str,
+        ) -> Result<Vec<ChildKeyAndIdSharedDetails<'a>>, QueryExecutionError> {
+            return entity_types
+                .iter()
+                .enumerate()
+                .map(|(i, entity_type)| {
+                    let child_table = layout.table_for_entity(entity_type)?;
+                    let sort_by_column = child_table.column_for_field(&child.sort_by_attribute)?;
+                    if sort_by_column.is_fulltext() {
+                        Err(QueryExecutionError::NotSupported(
+                            "Sorting by fulltext fields".to_string(),
+                        ))
+                    } else {
+                        let (parent_column, child_column) = match child.derived {
+                            true => (
+                                parent_table.primary_key(),
+                                child_table
+                                    .column_for_field(&child.join_attribute)
+                                    .map_err(|_| {
+                                        graph::constraint_violation!(
+                                    "Column for a join attribute `{}` of `{}` table not found",
+                                    child.join_attribute,
+                                    child_table.name.as_str()
+                                )
+                                    })?,
+                            ),
+                            false => (
+                                parent_table
+                                    .column_for_field(&child.join_attribute)
+                                    .map_err(|_| {
+                                        graph::constraint_violation!(
+                                    "Column for a join attribute `{}` of `{}` table not found",
+                                    child.join_attribute,
+                                    parent_table.name.as_str()
+                                )
+                                    })?,
+                                child_table.primary_key(),
+                            ),
+                        };
+
+                        Ok(ChildKeyAndIdSharedDetails {
+                            parent_table,
+                            child_table,
+                            parent_join_column: parent_column,
+                            child_join_column: child_column,
+                            prefix: format!("cc{}", i),
+                            sort_by_column,
+                            direction,
+                        })
+                    }
+                })
+                .collect::<Result<Vec<ChildKeyAndIdSharedDetails<'a>>, QueryExecutionError>>();
+        }
+
         fn with_child_interface_key<'a>(
+            layout: &'a Layout,
+            parent_table: &'a Table,
             child: EntityOrderByChildInfo,
             entity_types: Vec<EntityType>,
+            br_column: Option<BlockRangeColumn<'a>>,
             direction: &'static str,
-            parent_table: &'a Table,
-            layout: &'a Layout,
         ) -> Result<SortKey<'a>, QueryExecutionError> {
-            let mut i = 0;
+            if let Some(first_entity) = entity_types.first() {
+                let child_table = layout.table_for_entity(first_entity)?;
+                let sort_by_column = child_table.column_for_field(&child.sort_by_attribute)?;
 
-            Ok(SortKey::ChildKey(ChildKey::Many(
-                entity_types
-                    .iter()
-                    .map(|entity_type| {
-                        let child_table = layout.table_for_entity(entity_type)?;
-                        let sort_by_column = child_table.column_for_field(&child.sort_by_attribute)?;
-                        if sort_by_column.is_fulltext() {
-                            Err(QueryExecutionError::NotSupported(
-                                "Sorting by fulltext fields".to_string(),
-                            ))
-                        } else if sort_by_column.is_primary_key() {
-                            Err(QueryExecutionError::NotSupported(
-                                "Sorting by id".to_string(),
-                            ))
-                        } else {
-                            let (parent_column, child_column) = match child.derived {
-                                true => (
-                                    parent_table.primary_key(),
-                                    child_table
-                                        .column_for_field(&child.join_attribute)
-                                        .map_err(|_| {
-                                            graph::constraint_violation!(
-                                                "Column for a join attribute `{}` of `{}` table not found",
-                                                child.join_attribute,
-                                                child_table.name.as_str()
-                                            )
-                                        })?,
-                                ),
-                                false => (
-                                    parent_table
-                                        .column_for_field(&child.join_attribute)
-                                        .map_err(|_| {
-                                            graph::constraint_violation!(
-                                                "Column for a join attribute `{}` of `{}` table not found",
-                                                child.join_attribute,
-                                                parent_table.name.as_str()
-                                            )
-                                        })?,
-                                    child_table.primary_key(),
-                                ),
-                            };
-
-                            i += 1;
-
-                            Ok(ChildKeyDetails {
+                if sort_by_column.is_fulltext() {
+                    Err(QueryExecutionError::NotSupported(
+                        "Sorting by fulltext fields".to_string(),
+                    ))
+                } else if sort_by_column.is_primary_key() {
+                    if direction == ASC {
+                        Ok(SortKey::ChildKey(ChildKey::ManyIdAsc(
+                            build_children_vec(
+                                layout,
                                 parent_table,
-                                parent_join_column: parent_column,
-                                child_table,
-                                child_join_column: child_column,
-                                sort_by_column,
-                                prefix: format!("cc{}", i),
+                                entity_types,
+                                child,
                                 direction,
+                            )?
+                            .iter()
+                            .map(|asd| ChildIdDetails {
+                                parent_table: asd.parent_table,
+                                child_table: asd.child_table,
+                                parent_join_column: asd.parent_join_column,
+                                child_join_column: asd.child_join_column,
+                                prefix: asd.prefix.clone(),
                             })
-                        }
-                    })
-                    .collect::<Result<Vec<ChildKeyDetails<'a>>, QueryExecutionError>>()?,
-            )))
+                            .collect(),
+                            br_column,
+                        )))
+                    } else {
+                        Ok(SortKey::ChildKey(ChildKey::ManyIdDesc(
+                            build_children_vec(
+                                layout,
+                                parent_table,
+                                entity_types,
+                                child,
+                                direction,
+                            )?
+                            .iter()
+                            .map(|asd| ChildIdDetails {
+                                parent_table: asd.parent_table,
+                                child_table: asd.child_table,
+                                parent_join_column: asd.parent_join_column,
+                                child_join_column: asd.child_join_column,
+                                prefix: asd.prefix.clone(),
+                            })
+                            .collect(),
+                            br_column,
+                        )))
+                    }
+                } else {
+                    Ok(SortKey::ChildKey(ChildKey::Many(
+                        build_children_vec(layout, parent_table, entity_types, child, direction)?
+                            .iter()
+                            .map(|asd| ChildKeyDetails {
+                                parent_table: asd.parent_table,
+                                parent_join_column: asd.parent_join_column,
+                                child_table: asd.child_table,
+                                child_join_column: asd.child_join_column,
+                                sort_by_column: asd.sort_by_column,
+                                prefix: asd.prefix.clone(),
+                                direction: asd.direction.clone(),
+                            })
+                            .collect(),
+                    )))
+                }
+            } else {
+                Ok(SortKey::ChildKey(ChildKey::Many(vec![])))
+            }
         }
 
         // If there is more than one table, we are querying an interface,
@@ -2881,7 +3013,7 @@ impl<'a> SortKey<'a> {
                     ASC,
                 ),
                 EntityOrderByChild::Interface(child, entity_types) => {
-                    with_child_interface_key(child, entity_types, ASC, table, layout)
+                    with_child_interface_key(layout, table, child, entity_types, br_column, ASC)
                 }
             },
             EntityOrder::ChildDescending(kind) => match kind {
@@ -2895,7 +3027,7 @@ impl<'a> SortKey<'a> {
                     DESC,
                 ),
                 EntityOrderByChild::Interface(child, entity_types) => {
-                    with_child_interface_key(child, entity_types, DESC, table, layout)
+                    with_child_interface_key(layout, table, child, entity_types, br_column, DESC)
                 }
             },
         }
@@ -2944,6 +3076,17 @@ impl<'a> SortKey<'a> {
                             out.push_sql(child.prefix.as_str());
                             out.push_sql(".");
                             out.push_identifier(child.sort_by_column.name.as_str())?;
+                        }
+                    }
+                    ChildKey::ManyIdAsc(children, br_column)
+                    | ChildKey::ManyIdDesc(children, br_column) => {
+                        for child in children.iter() {
+                            if let Some(br_column) = br_column {
+                                out.push_sql(", ");
+                                out.push_sql(child.prefix.as_str());
+                                out.push_sql(".");
+                                br_column.name(out);
+                            }
                         }
                     }
                     ChildKey::IdAsc(child, br_column) | ChildKey::IdDesc(child, br_column) => {
@@ -3017,6 +3160,18 @@ impl<'a> SortKey<'a> {
                             out,
                         )
                     }
+
+                    ChildKey::ManyIdAsc(children, br_column) => {
+                        let prefixes: Vec<&str> =
+                            children.iter().map(|child| child.prefix.as_str()).collect();
+                        SortKey::multi_sort_id_expr(prefixes, ASC, br_column, out)
+                    }
+                    ChildKey::ManyIdDesc(children, br_column) => {
+                        let prefixes: Vec<&str> =
+                            children.iter().map(|child| child.prefix.as_str()).collect();
+                        SortKey::multi_sort_id_expr(prefixes, DESC, br_column, out)
+                    }
+
                     ChildKey::IdAsc(child, br_column) => {
                         out.push_sql(child.prefix.as_str());
                         out.push_sql(".");
@@ -3145,7 +3300,7 @@ impl<'a> SortKey<'a> {
     }
 
     /// Generate
-    ///   [COALESCE(name1, name2) direction,] COALESCE(id1, id2)
+    ///   [COALESCE(name1, name2) direction,] id1, id2
     fn multi_sort_expr(
         columns: Vec<(&Column, &str)>,
         direction: &str,
@@ -3154,7 +3309,7 @@ impl<'a> SortKey<'a> {
     ) -> QueryResult<()> {
         for (column, _) in columns.iter() {
             if column.is_primary_key() {
-                // This shouldn't happen since we'd use SortKey::IdAsc/Desc
+                // This shouldn't happen since we'd use SortKey::ManyIdAsc/ManyDesc
                 return Err(constraint_violation!(
                     "multi_sort_expr called with primary key column"
                 ));
@@ -3204,6 +3359,51 @@ impl<'a> SortKey<'a> {
             out.push_sql(" ");
             out.push_sql(direction);
         }
+        Ok(())
+    }
+
+    /// Generate
+    ///   COALESCE(id1, id2) direction, [COALESCE(br_column1, br_column2) direction]
+    fn multi_sort_id_expr(
+        prefixes: Vec<&str>,
+        direction: &str,
+        br_column: &Option<BlockRangeColumn>,
+        out: &mut AstPass<Pg>,
+    ) -> QueryResult<()> {
+        fn push_prefix(prefix: Option<&str>, out: &mut AstPass<Pg>) {
+            if let Some(prefix) = prefix {
+                out.push_sql(prefix);
+                out.push_sql(".");
+            }
+        }
+
+        out.push_sql("coalesce(");
+        for (i, prefix) in prefixes.iter().enumerate() {
+            if i != 0 {
+                out.push_sql(", ");
+            }
+
+            push_prefix(Some(prefix), out);
+            out.push_identifier(PRIMARY_KEY_COLUMN)?;
+        }
+        out.push_sql(") ");
+
+        out.push_sql(direction);
+
+        if let Some(br_column) = br_column {
+            out.push_sql(", coalesce(");
+            for (i, prefix) in prefixes.iter().enumerate() {
+                if i != 0 {
+                    out.push_sql(", ");
+                }
+
+                push_prefix(Some(prefix), out);
+                br_column.bare_name(out);
+            }
+            out.push_sql(") ");
+            out.push_sql(direction);
+        }
+
         Ok(())
     }
 
@@ -3273,6 +3473,18 @@ impl<'a> SortKey<'a> {
                     )?;
                 }
                 ChildKey::Many(children) => {
+                    for child in children.iter() {
+                        add(
+                            block,
+                            &child.child_table,
+                            &child.child_join_column,
+                            &child.parent_join_column,
+                            &child.prefix,
+                            out,
+                        )?;
+                    }
+                }
+                ChildKey::ManyIdAsc(children, _) | ChildKey::ManyIdDesc(children, _) => {
                     for child in children.iter() {
                         add(
                             block,

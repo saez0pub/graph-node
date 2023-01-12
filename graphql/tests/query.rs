@@ -788,15 +788,15 @@ fn can_query_with_sorting_by_derived_child_entity() {
 fn can_query_with_sorting_by_child_entity_id() {
     const QUERY: &str = "
     query {
-        desc: musicians(first: 100, orderBy: mainBand__id, orderDirection: desc) {
-            name
-            mainBand {
+        desc: bandReviews(first: 100, orderBy: author__id, orderDirection: desc) {
+            body
+            author {
                 name
             }
         }
-        asc: musicians(first: 100, orderBy: mainBand__id, orderDirection: asc) {
-            name
-            mainBand {
+        asc: bandReviews(first: 100, orderBy: author__id, orderDirection: asc) {
+            body
+            author {
                 name
             }
         }
@@ -805,16 +805,14 @@ fn can_query_with_sorting_by_child_entity_id() {
     run_query(QUERY, |result, _| {
         let exp = object! {
             desc: vec![
-                object! { name: "Valerie", mainBand: r::Value::Null },
-                object! { name: "Tom",  mainBand: object! { name: "The Amateurs"} },
-                object! { name: "John", mainBand: object! { name: "The Musicians" } },
-                object! { name: "Lisa", mainBand: object! { name: "The Musicians" } },
+                object! { body: "Very Bad musicians",   author: object! { name: "Anonymous 3"  } },
+                object! { body: "Good amateurs",        author: object! { name: "Goodwill" } },
+                object! { body: "Bad musicians",        author: object! { name: "Baden" } },
                 ],
             asc: vec![
-                object! { name: "John", mainBand: object! { name: "The Musicians" } },
-                object! { name: "Lisa", mainBand: object! { name: "The Musicians" } },
-                object! { name: "Tom",  mainBand: object! { name: "The Amateurs"} },
-                object! { name: "Valerie", mainBand: r::Value::Null },
+                object! { body: "Bad musicians",        author: object! { name: "Baden" } },
+                object! { body: "Good amateurs",        author: object! { name: "Goodwill" } },
+                object! { body: "Very Bad musicians",   author: object! { name: "Anonymous 3"  } },
                 ]
         };
 
