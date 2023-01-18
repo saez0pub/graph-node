@@ -6,6 +6,7 @@ edition.workspace = true
 [dependencies]
 anyhow = "1.0"
 async-stream = "0.3.3"
+bollard = "0.10"
 futures = { version = "0.3", features = ["compat"] }
 graph = { path = "../graph" }
 graph-chain-ethereum = { path = "../chain/ethereum" }
@@ -18,16 +19,14 @@ graph-runtime-wasm = { path = "../runtime/wasm" }
 graph-server-index-node = { path = "../server/index-node" }
 graphql-parser = "0.4.0"
 hyper = "0.14"
-port_check = "0.1.5"
-hex = "0.4.3"
-slog = { version = "2.7.0", features = ["release_max_level_trace", "max_level_trace"] }
 serde = "1.0"
 serde_yaml = "0.8"
+slog = { version = "2.7.0", features = ["release_max_level_trace", "max_level_trace"] }
 tokio = { version = "1.16.1", features = ["rt", "macros", "process"] }
+uuid = { version = "1.2.2", features = ["v4"] }
 
 [dev-dependencies]
 anyhow = "1.0.68"
-bollard = "0.10"
 cid = "0.10.1"
 graph-chain-near = { path = "../chain/near" }
 lazy_static = "1.4.0"
